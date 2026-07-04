@@ -1,7 +1,7 @@
 import Order from '../models/order.model.js';
 import Cart from '../models/cart.model.js';
 import Product from '../models/product.model.js';
-
+import { toCSV } from '../utils/csv.js';
 // -----------------------------------------------
 // GET /api/orders
 // requireAdmin — all orders for admin panel
@@ -444,5 +444,35 @@ export const getOrderAnalytics = async (req, res) => {
       success: false,
       message: err.message,
     });
+  }
+};
+
+
+export const exportOrders = async (req, res) => {
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 });
+
+    const columns = [
+      { label: 'Order ID',        value: (o) => o._id.toString() },
+      { label: 'Customer Name',   value: (o) => o.customerName },
+      { label: 'Customer Email',  value: (o) => o.customerEmail },
+      { label: 'Items',           value: (o) => o.items.map((i) => `${i.name} (${i.size} x${i.quantity})`).join('; ') },
+      { label: 'Subtotal',        value: (o) => o.subtotal },
+      { label: 'Shipping',        value: (o) => o.shippingCost },
+      { label: 'Tax',             value: (o) => o.tax },
+      { label: 'Total',           value: (o) => o.total },
+      { label: 'Status',          value: (o) => o.status },
+      { label: 'Payment Status',  value: (o) => o.payment?.status || '' },
+      { label: 'Tracking Number', value: (o) => o.trackingNumber || '' },
+      { label: 'Created At',      value: (o) => o.createdAt?.toISOString() || '' },
+    ];
+
+    const csv = toCSV(orders, columns);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="ferrum-orders-${Date.now()}.csv"`);
+    res.status(200).send(csv);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };

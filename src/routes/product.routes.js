@@ -6,16 +6,16 @@ import {
   updateProduct,
   deleteProduct,
   toggleVisibility,
+  exportProducts,
 } from '../controllers/product.controller.js';
 import { requireAdmin } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
-// Public routes — no auth needed
+router.get('/export', requireAdmin, exportProducts);   // must come before /:id
 router.get('/',    getAllProducts);
 router.get('/:id', getProductById);
 
-// Admin only routes
 router.post('/',                    requireAdmin, createProduct);
 router.put('/:id',                  requireAdmin, updateProduct);
 router.delete('/:id',               requireAdmin, deleteProduct);

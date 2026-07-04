@@ -1,5 +1,5 @@
 import Product from '../models/product.model.js';
-
+import { toCSV } from '../utils/csv.js';
 // -----------------------------------------------
 // GET /api/products
 // Public — anyone can fetch products
@@ -93,6 +93,32 @@ export const getProductById = async (req, res) => {
 // POST /api/products
 // Admin only
 // -----------------------------------------------
+
+export const exportProducts = async (req, res) => {
+  try {
+    const products = await Product.find().sort({ createdAt: -1 });
+
+    const columns = [
+      { label: 'Name',         value: (p) => p.name },
+      { label: 'SKU',          value: (p) => p.sku },
+      { label: 'Category',     value: (p) => p.category },
+      { label: 'Price',        value: (p) => p.price },
+      { label: 'Total Stock',  value: (p) => p.totalStock },
+      { label: 'Stock Status', value: (p) => p.stockStatus },
+      { label: 'Visible',      value: (p) => (p.visible ? 'Yes' : 'No') },
+      { label: 'Created At',   value: (p) => p.createdAt?.toISOString() || '' },
+    ];
+
+    const csv = toCSV(products, columns);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="ferrum-products-${Date.now()}.csv"`);
+    res.status(200).send(csv);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export const createProduct = async (req, res) => {
   try {
     const {
