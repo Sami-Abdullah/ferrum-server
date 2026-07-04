@@ -99,7 +99,9 @@ const productSchema = new mongoose.Schema(
 );
 
 // Auto-calculate totalStock and stockStatus before save
-productSchema.pre('save', function (next) {
+// Mongoose 9: pre hooks no longer accept a `next` callback parameter —
+// use an async function instead, with no next() call.
+productSchema.pre('save', async function () {
   const sizes = this.sizes;
 
   this.totalStock =
@@ -112,12 +114,10 @@ productSchema.pre('save', function (next) {
   if (this.totalStock === 0)       this.stockStatus = 'out';
   else if (this.totalStock <= 10)  this.stockStatus = 'low';
   else                             this.stockStatus = 'in';
-
-  next();
 });
 
 // Same for findOneAndUpdate
-productSchema.pre('findOneAndUpdate', function (next) {
+productSchema.pre('findOneAndUpdate', async function () {
   const update = this.getUpdate();
 
   if (update.sizes) {
@@ -132,8 +132,6 @@ productSchema.pre('findOneAndUpdate', function (next) {
     update.totalStock  = total;
     update.stockStatus = total === 0 ? 'out' : total <= 10 ? 'low' : 'in';
   }
-
-  next();
 });
 
 productSchema.index({ category: 1 });

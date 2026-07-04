@@ -1,11 +1,5 @@
 import mongoose from 'mongoose';
 
-// -----------------------------------------------
-// Item inside an order
-// We snapshot name, image, price at purchase time
-// so if the product changes later the order
-// still shows what the customer actually bought
-// -----------------------------------------------
 const orderItemSchema = new mongoose.Schema(
   {
     product: {
@@ -30,12 +24,6 @@ const orderItemSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// -----------------------------------------------
-// Shipping address
-// Also snapshotted at purchase time
-// so changing your profile address later
-// does not affect old orders
-// -----------------------------------------------
 const shippingAddressSchema = new mongoose.Schema(
   {
     fullName: { type: String, required: true },
@@ -47,10 +35,6 @@ const shippingAddressSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// -----------------------------------------------
-// Single event in the order timeline
-// Every status change adds one of these
-// -----------------------------------------------
 const timelineEventSchema = new mongoose.Schema(
   {
     status: { type: String, required: true },
@@ -62,15 +46,11 @@ const timelineEventSchema = new mongoose.Schema(
 
 const orderSchema = new mongoose.Schema(
   {
-    // Better Auth user ID — string not ObjectId
     user: {
       type:     String,
       required: true,
     },
 
-    // Snapshot of customer info at time of order
-    // so if they change their name later
-    // old orders still show the correct name
     customerName:  { type: String, required: true },
     customerEmail: { type: String, required: true },
 
@@ -87,38 +67,33 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Pricing breakdown
     subtotal:     { type: Number, required: true, min: 0 },
     shippingCost: { type: Number, default: 0,     min: 0 },
     tax:          { type: Number, default: 0,     min: 0 },
     total:        { type: Number, required: true, min: 0 },
 
-    // Order status
     status: {
       type:    String,
       enum:    ['pending', 'processing', 'shipped', 'delivered', 'cancelled'],
       default: 'pending',
     },
 
-    // Payment
     payment: {
-      method:               { type: String },  // Visa, Mastercard etc
-      last4:                { type: String },  // last 4 digits
+      method:               { type: String },
+      last4:                { type: String },
       status: {
         type:    String,
         enum:    ['paid', 'refunded', 'pending'],
         default: 'pending',
       },
-      stripePaymentIntentId: { type: String }, // needed to issue refunds
+      stripePaymentIntentId: { type: String },
     },
 
-    // Shipping
     trackingNumber: {
       type:    String,
       default: '',
     },
 
-    // Refund — only populated if a refund was issued
     refund: {
       amount:         { type: Number },
       reason:         { type: String },
@@ -126,7 +101,6 @@ const orderSchema = new mongoose.Schema(
       date:           { type: Date },
     },
 
-    // Full history of status changes
     timeline: {
       type:    [timelineEventSchema],
       default: [],
@@ -137,11 +111,10 @@ const orderSchema = new mongoose.Schema(
   }
 );
 
-// -----------------------------------------------
-// When an order is created, automatically add
-// the first timeline event
-// -----------------------------------------------
-orderSchema.pre('save', function (next) {
+// When an order is created, automatically add the first timeline event
+// Mongoose 9: pre hooks no longer accept a `next` callback parameter —
+// use an async function instead, with no next() call.
+orderSchema.pre('save', async function () {
   if (this.isNew) {
     this.timeline.push({
       status: 'pending',
@@ -149,13 +122,12 @@ orderSchema.pre('save', function (next) {
       date:   new Date(),
     });
   }
-  next();
 });
 
-orderSchema.index({ user: 1 });                              // get all orders by a user
-orderSchema.index({ status: 1 });                            // filter by status
-orderSchema.index({ createdAt: -1 });                        // newest first
-orderSchema.index({ 'payment.stripePaymentIntentId': 1 });   // fast refund lookup
+orderSchema.index({ user: 1 });
+orderSchema.index({ status: 1 });
+orderSchema.index({ createdAt: -1 });
+orderSchema.index({ 'payment.stripePaymentIntentId': 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 

@@ -8,15 +8,11 @@ const reviewSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Better Auth user ID
     user: {
       type:     String,
       required: true,
     },
 
-    // Snapshot of user info at time of review
-    // so if they change their name later
-    // the review still shows the original name
     userName: {
       type:     String,
       required: true,
@@ -45,10 +41,6 @@ const reviewSchema = new mongoose.Schema(
       maxlength: [500, 'Review cannot exceed 500 characters'],
     },
 
-    // Only true if we confirm the user
-    // actually ordered this product
-    // prevents fake reviews from people
-    // who never bought it
     verified: {
       type:    Boolean,
       default: false,
@@ -59,37 +51,19 @@ const reviewSchema = new mongoose.Schema(
   }
 );
 
-// -----------------------------------------------
-// Compound unique index
-// One review per user per product
-// A user can review many products
-// Many users can review one product
-// But one user cannot review the same
-// product twice
-// -----------------------------------------------
 reviewSchema.index(
   { product: 1, user: 1 },
   { unique: true }
 );
 
-reviewSchema.index({ product: 1, createdAt: -1 }); // all reviews for a product newest first
-reviewSchema.index({ user: 1 });                    // all reviews by a user
+reviewSchema.index({ product: 1, createdAt: -1 });
+reviewSchema.index({ user: 1 });
 
-// -----------------------------------------------
-// After a review is saved — automatically
-// recalculate the product's average rating
-// and review count
-// So the product always has accurate stats
-// without any manual work in the controller
-// -----------------------------------------------
 reviewSchema.post('save', async function () {
   const Review = this.constructor;
 
   const result = await Review.aggregate([
-    // Only look at reviews for this product
     { $match: { product: this.product } },
-
-    // Calculate average rating and count
     {
       $group: {
         _id:           '$product',
@@ -101,17 +75,12 @@ reviewSchema.post('save', async function () {
 
   if (result.length > 0) {
     await mongoose.model('Product').findByIdAndUpdate(this.product, {
-      // Round to 1 decimal place — 4.666 becomes 4.7
       averageRating: Math.round(result[0].averageRating * 10) / 10,
       reviewCount:   result[0].reviewCount,
     });
   }
 });
 
-// -----------------------------------------------
-// After a review is deleted — recalculate again
-// so the product rating stays accurate
-// -----------------------------------------------
 reviewSchema.post('findOneAndDelete', async function (doc) {
   if (!doc) return;
 
@@ -129,13 +98,11 @@ reviewSchema.post('findOneAndDelete', async function (doc) {
   ]);
 
   if (result.length > 0) {
-    // Reviews still exist — update with new average
     await mongoose.model('Product').findByIdAndUpdate(doc.product, {
       averageRating: Math.round(result[0].averageRating * 10) / 10,
       reviewCount:   result[0].reviewCount,
     });
   } else {
-    // No reviews left — reset to zero
     await mongoose.model('Product').findByIdAndUpdate(doc.product, {
       averageRating: 0,
       reviewCount:   0,
