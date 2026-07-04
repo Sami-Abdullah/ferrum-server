@@ -14,6 +14,7 @@ export const getAllProducts = async (req, res) => {
       stockStatus,
       search,
       visible,
+      sku,
       page  = 1,
       limit = 12,
     } = req.query;
@@ -28,7 +29,7 @@ export const getAllProducts = async (req, res) => {
     if (search) {
       filter.name = { $regex: search, $options: 'i' };
     }
-
+    if (sku)filter.sku         = sku.toUpperCase(); 
     // Storefront only sees visible products
     // Admin can see all including drafts
     if (visible === 'true')  filter.visible = true;
