@@ -55,6 +55,62 @@ export const getAllOrders = async (req, res) => {
 };
 
 // -----------------------------------------------
+// GET /api/orders/analytics/sales-chart
+// requireAdmin — FR-22: 30-day sales velocity chart
+// -----------------------------------------------
+export const getSalesChart = async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const salesByDay = await Order.aggregate([
+      { $match: { createdAt: { $gte: thirtyDaysAgo }, 'payment.status': 'paid' } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          revenue: { $sum: '$total' },
+          orders:  { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    res.status(200).json({ success: true, salesByDay });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// -----------------------------------------------
+// GET /api/orders/analytics/top-products
+// requireAdmin — FR-22: top-performing products
+// -----------------------------------------------
+export const getTopProducts = async (req, res) => {
+  try {
+    const topProducts = await Order.aggregate([
+      { $match: { 'payment.status': 'paid' } },
+      { $unwind: '$items' },
+      {
+        $group: {
+          _id:       '$items.product',
+          name:      { $first: '$items.name' },
+          image:     { $first: '$items.image' },
+          totalSold: { $sum: '$items.quantity' },
+          revenue:   { $sum: { $multiply: ['$items.price', '$items.quantity'] } },
+        },
+      },
+      { $sort: { revenue: -1 } },
+      { $limit: 5 },
+    ]);
+
+    res.status(200).json({ success: true, topProducts });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
+// -----------------------------------------------
 // GET /api/orders/my
 // requireAuth — logged in user's own orders
 // -----------------------------------------------
