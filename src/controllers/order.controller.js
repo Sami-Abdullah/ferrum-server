@@ -469,13 +469,20 @@ export const getOrderAnalytics = async (req, res) => {
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]);
 
+    // Success Rate — FR-21, Screen 8: percentage of orders NOT cancelled
+    const cancelledOrders = await Order.countDocuments({ status: 'cancelled' });
+    const successRate = totalOrders > 0
+      ? Math.round(((totalOrders - cancelledOrders) / totalOrders) * 1000) / 10
+      : 0;
+
     res.status(200).json({
       success: true,
       analytics: {
         totalOrders,
-        totalRevenue:  Math.round(totalRevenue * 100) / 100,
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
         avgOrderValue,
         ordersByStatus,
+        successRate,
       },
     });
   } catch (err) {

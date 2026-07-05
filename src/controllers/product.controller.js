@@ -15,28 +15,31 @@ export const getAllProducts = async (req, res) => {
       search,
       visible,
       sku,
-      page  = 1,
+      page = 1,
       limit = 12,
     } = req.query;
 
     // Build filter object dynamically
     const filter = {};
 
-    if (category)    filter.category    = category;
+    if (category) filter.category = category;
     if (stockStatus) filter.stockStatus = stockStatus;
 
     // Search by name — case insensitive
     if (search) {
-      filter.name = { $regex: search, $options: 'i' };
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { sku: { $regex: search, $options: 'i' } },
+      ];
     }
-    if (sku)filter.sku         = sku.toUpperCase(); 
+    if (sku) filter.sku = sku.toUpperCase();
     // Storefront only sees visible products
     // Admin can see all including drafts
-    if (visible === 'true')  filter.visible = true;
+    if (visible === 'true') filter.visible = true;
     if (visible === 'false') filter.visible = false;
 
     // Pagination
-    const skip  = (Number(page) - 1) * Number(limit);
+    const skip = (Number(page) - 1) * Number(limit);
     const total = await Product.countDocuments(filter);
 
     const products = await Product.find(filter)
@@ -45,12 +48,12 @@ export const getAllProducts = async (req, res) => {
       .limit(Number(limit));
 
     res.status(200).json({
-      success:  true,
+      success: true,
       products,
       pagination: {
         total,
-        page:       Number(page),
-        limit:      Number(limit),
+        page: Number(page),
+        limit: Number(limit),
         totalPages: Math.ceil(total / Number(limit)),
       },
     });
@@ -99,14 +102,14 @@ export const exportProducts = async (req, res) => {
     const products = await Product.find().sort({ createdAt: -1 });
 
     const columns = [
-      { label: 'Name',         value: (p) => p.name },
-      { label: 'SKU',          value: (p) => p.sku },
-      { label: 'Category',     value: (p) => p.category },
-      { label: 'Price',        value: (p) => p.price },
-      { label: 'Total Stock',  value: (p) => p.totalStock },
+      { label: 'Name', value: (p) => p.name },
+      { label: 'SKU', value: (p) => p.sku },
+      { label: 'Category', value: (p) => p.category },
+      { label: 'Price', value: (p) => p.price },
+      { label: 'Total Stock', value: (p) => p.totalStock },
       { label: 'Stock Status', value: (p) => p.stockStatus },
-      { label: 'Visible',      value: (p) => (p.visible ? 'Yes' : 'No') },
-      { label: 'Created At',   value: (p) => p.createdAt?.toISOString() || '' },
+      { label: 'Visible', value: (p) => (p.visible ? 'Yes' : 'No') },
+      { label: 'Created At', value: (p) => p.createdAt?.toISOString() || '' },
     ];
 
     const csv = toCSV(products, columns);
@@ -196,8 +199,8 @@ export const updateProduct = async (req, res) => {
     // conflict with another product
     if (sku) {
       const existing = await Product.findOne({
-        sku:  sku.toUpperCase(),
-        _id:  { $ne: req.params.id }, // exclude current product
+        sku: sku.toUpperCase(),
+        _id: { $ne: req.params.id }, // exclude current product
       });
 
       if (existing) {
@@ -221,7 +224,7 @@ export const updateProduct = async (req, res) => {
         visible,
       },
       {
-        new:          true,  // return updated document
+        new: true,  // return updated document
         runValidators: true, // run schema validators on update
       }
     );
