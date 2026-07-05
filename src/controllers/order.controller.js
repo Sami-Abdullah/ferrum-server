@@ -294,27 +294,11 @@ export const createOrder = async (req, res) => {
 // -----------------------------------------------
 // PATCH /api/orders/:id/status
 // requireAdmin
-// Update order status and add timeline event
 // Body: { status, trackingNumber }
 // -----------------------------------------------
 export const updateOrderStatus = async (req, res) => {
   try {
     const { status, trackingNumber } = req.body;
-
-    const validStatuses = [
-      'pending',
-      'processing',
-      'shipped',
-      'delivered',
-      'cancelled',
-    ];
-
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid status — must be one of: ${validStatuses.join(', ')}`,
-      });
-    }
 
     const order = await Order.findById(req.params.id);
 
@@ -325,17 +309,17 @@ export const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Prevent updating a cancelled order
-    if (order.status === 'cancelled') {
+    // FR-20: orders can only be cancelled if they haven't shipped yet
+    if (status === 'cancelled' && ['shipped', 'delivered'].includes(order.status)) {
       return res.status(400).json({
         success: false,
-        message: 'Cannot update a cancelled order',
+        message: `Cannot cancel an order that has already been ${order.status}`,
       });
     }
 
-    // Build timeline note
     const timelineNotes = {
-      processing: 'Payment confirmed — order is being prepared',
+      pending:    'Order placed successfully',
+      processing: 'Payment confirmed',
       shipped:    trackingNumber
         ? `Dispatched — Tracking: ${trackingNumber}`
         : 'Order dispatched',
@@ -376,7 +360,6 @@ export const updateOrderStatus = async (req, res) => {
     });
   }
 };
-
 // -----------------------------------------------
 // POST /api/orders/:id/refund
 // requireAdmin
@@ -532,3 +515,4 @@ export const exportOrders = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
