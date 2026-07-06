@@ -3,9 +3,9 @@ import { toCSV } from '../utils/csv.js';
 // -----------------------------------------------
 // GET /api/products
 // Public — anyone can fetch products
-// Supports filtering by category, stockStatus
-// Supports search by name
-// Supports pagination
+// Supports filtering by category, stockStatus, size
+// Supports search by name or SKU
+// Supports sorting and pagination
 // -----------------------------------------------
 export const getAllProducts = async (req, res) => {
   try {
@@ -15,6 +15,8 @@ export const getAllProducts = async (req, res) => {
       search,
       visible,
       sku,
+      size,
+      sort = 'newest',
       page = 1,
       limit = 12,
     } = req.query;
@@ -38,12 +40,25 @@ export const getAllProducts = async (req, res) => {
     if (visible === 'true') filter.visible = true;
     if (visible === 'false') filter.visible = false;
 
+    // FR-12: filter by size — only show products with stock in that size
+    if (size) {
+      filter[`sizes.${size}`] = { $gt: 0 };
+    }
+
+    // Sorting
+    const sortMap = {
+      newest:     { createdAt: -1 },
+      price_asc:  { price: 1 },
+      price_desc: { price: -1 },
+    };
+    const sortOption = sortMap[sort] || sortMap.newest;
+
     // Pagination
     const skip = (Number(page) - 1) * Number(limit);
     const total = await Product.countDocuments(filter);
 
     const products = await Product.find(filter)
-      .sort({ createdAt: -1 })
+      .sort(sortOption)
       .skip(skip)
       .limit(Number(limit));
 

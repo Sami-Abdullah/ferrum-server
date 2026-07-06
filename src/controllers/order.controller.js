@@ -1,7 +1,9 @@
+import { stripe } from '../lib/stripe.js';
 import Order from '../models/order.model.js';
 import Cart from '../models/cart.model.js';
 import Product from '../models/product.model.js';
 import { toCSV } from '../utils/csv.js';
+import { sendRefundConfirmationEmail } from '../lib/resend.js';
 // -----------------------------------------------
 // GET /api/orders
 // requireAdmin — all orders for admin panel
@@ -13,7 +15,7 @@ export const getAllOrders = async (req, res) => {
     const {
       status,
       search,
-      page  = 1,
+      page = 1,
       limit = 20,
     } = req.query;
 
@@ -23,12 +25,12 @@ export const getAllOrders = async (req, res) => {
 
     if (search) {
       filter.$or = [
-        { customerName:  { $regex: search, $options: 'i' } },
+        { customerName: { $regex: search, $options: 'i' } },
         { customerEmail: { $regex: search, $options: 'i' } },
       ];
     }
 
-    const skip  = (Number(page) - 1) * Number(limit);
+    const skip = (Number(page) - 1) * Number(limit);
     const total = await Order.countDocuments(filter);
 
     const orders = await Order.find(filter)
@@ -41,8 +43,8 @@ export const getAllOrders = async (req, res) => {
       orders,
       pagination: {
         total,
-        page:       Number(page),
-        limit:      Number(limit),
+        page: Number(page),
+        limit: Number(limit),
         totalPages: Math.ceil(total / Number(limit)),
       },
     });
@@ -69,7 +71,7 @@ export const getSalesChart = async (req, res) => {
         $group: {
           _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
           revenue: { $sum: '$total' },
-          orders:  { $sum: 1 },
+          orders: { $sum: 1 },
         },
       },
       { $sort: { _id: 1 } },
@@ -92,11 +94,11 @@ export const getTopProducts = async (req, res) => {
       { $unwind: '$items' },
       {
         $group: {
-          _id:       '$items.product',
-          name:      { $first: '$items.name' },
-          image:     { $first: '$items.image' },
+          _id: '$items.product',
+          name: { $first: '$items.name' },
+          image: { $first: '$items.image' },
           totalSold: { $sum: '$items.quantity' },
-          revenue:   { $sum: { $multiply: ['$items.price', '$items.quantity'] } },
+          revenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } },
         },
       },
       { $sort: { revenue: -1 } },
@@ -228,39 +230,39 @@ export const createOrder = async (req, res) => {
       }
 
       verifiedItems.push({
-        product:  product._id,
-        name:     product.name,
-        image:    product.images[0],
-        price:    product.price, // use REAL price from DB
-        size:     item.size,
+        product: product._id,
+        name: product.name,
+        image: product.images[0],
+        price: product.price, // use REAL price from DB
+        size: item.size,
         quantity: item.quantity,
       });
     }
 
     // Calculate totals using real prices
-    const subtotal     = verifiedItems.reduce(
+    const subtotal = verifiedItems.reduce(
       (sum, item) => sum + item.price * item.quantity, 0
     );
     const shippingCost = subtotal >= 500 ? 0 : 25; // free shipping over $500
-    const tax          = Math.round(subtotal * 0.1 * 100) / 100; // 10% tax
-    const total        = subtotal + shippingCost + tax;
+    const tax = Math.round(subtotal * 0.1 * 100) / 100; // 10% tax
+    const total = subtotal + shippingCost + tax;
 
     // Create the order
     const order = await Order.create({
-      user:          req.user.id,
-      customerName:  req.user.name,
+      user: req.user.id,
+      customerName: req.user.name,
       customerEmail: req.user.email,
-      items:         verifiedItems,
+      items: verifiedItems,
       shippingAddress,
       subtotal,
       shippingCost,
       tax,
       total,
-      status:        'pending',
+      status: 'pending',
       payment: {
-        method:               paymentInfo?.method || '',
-        last4:                paymentInfo?.last4  || '',
-        status:               'paid',
+        method: paymentInfo?.method || '',
+        last4: paymentInfo?.last4 || '',
+        status: 'paid',
         stripePaymentIntentId: paymentInfo?.stripePaymentIntentId || '',
       },
     });
@@ -318,13 +320,13 @@ export const updateOrderStatus = async (req, res) => {
     }
 
     const timelineNotes = {
-      pending:    'Order placed successfully',
+      pending: 'Order placed successfully',
       processing: 'Payment confirmed',
-      shipped:    trackingNumber
+      shipped: trackingNumber
         ? `Dispatched — Tracking: ${trackingNumber}`
         : 'Order dispatched',
-      delivered:  'Order delivered successfully',
-      cancelled:  'Order cancelled',
+      delivered: 'Order delivered successfully',
+      cancelled: 'Order cancelled',
     };
 
     // Update order
@@ -411,10 +413,29 @@ export const issueRefund = async (req, res) => {
     // const stripeRefundId = refund.id;
     // -----------------------------------------------
 
-    const stripeRefundId = `re_mock_${Date.now()}`; // remove when Stripe is wired
+    if (!order.payment.stripePaymentIntentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'This order has no associated Stripe payment — cannot process a real refund',
+      });
+    }
+
+    let stripeRefundId;
+    try {
+      const refund = await stripe.refunds.create({
+        payment_intent: order.payment.stripePaymentIntentId,
+        amount: Math.round(amount * 100), // Stripe uses cents
+      });
+      stripeRefundId = refund.id;
+    } catch (stripeErr) {
+      return res.status(400).json({
+        success: false,
+        message: `Stripe refund failed: ${stripeErr.message}`,
+      });
+    }
 
     // Update order
-    order.status         = 'cancelled';
+    order.status = 'cancelled';
     order.payment.status = 'refunded';
     order.refund = {
       amount,
@@ -425,11 +446,16 @@ export const issueRefund = async (req, res) => {
 
     order.timeline.push({
       status: 'cancelled',
-      note:   `Refund of $${amount} issued — ${reason}`,
-      date:   new Date(),
+      note: `Refund of $${amount} issued — ${reason}`,
+      date: new Date(),
     });
 
     await order.save();
+    try {
+      await sendRefundConfirmationEmail(order);
+    } catch (emailErr) {
+      console.error('Failed to send refund confirmation email:', emailErr.message);
+    }
 
     res.status(200).json({
       success: true,
@@ -499,18 +525,18 @@ export const exportOrders = async (req, res) => {
     const orders = await Order.find().sort({ createdAt: -1 });
 
     const columns = [
-      { label: 'Order ID',        value: (o) => o._id.toString() },
-      { label: 'Customer Name',   value: (o) => o.customerName },
-      { label: 'Customer Email',  value: (o) => o.customerEmail },
-      { label: 'Items',           value: (o) => o.items.map((i) => `${i.name} (${i.size} x${i.quantity})`).join('; ') },
-      { label: 'Subtotal',        value: (o) => o.subtotal },
-      { label: 'Shipping',        value: (o) => o.shippingCost },
-      { label: 'Tax',             value: (o) => o.tax },
-      { label: 'Total',           value: (o) => o.total },
-      { label: 'Status',          value: (o) => o.status },
-      { label: 'Payment Status',  value: (o) => o.payment?.status || '' },
+      { label: 'Order ID', value: (o) => o._id.toString() },
+      { label: 'Customer Name', value: (o) => o.customerName },
+      { label: 'Customer Email', value: (o) => o.customerEmail },
+      { label: 'Items', value: (o) => o.items.map((i) => `${i.name} (${i.size} x${i.quantity})`).join('; ') },
+      { label: 'Subtotal', value: (o) => o.subtotal },
+      { label: 'Shipping', value: (o) => o.shippingCost },
+      { label: 'Tax', value: (o) => o.tax },
+      { label: 'Total', value: (o) => o.total },
+      { label: 'Status', value: (o) => o.status },
+      { label: 'Payment Status', value: (o) => o.payment?.status || '' },
       { label: 'Tracking Number', value: (o) => o.trackingNumber || '' },
-      { label: 'Created At',      value: (o) => o.createdAt?.toISOString() || '' },
+      { label: 'Created At', value: (o) => o.createdAt?.toISOString() || '' },
     ];
 
     const csv = toCSV(orders, columns);
