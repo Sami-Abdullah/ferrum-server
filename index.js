@@ -12,7 +12,7 @@ import orderRoutes    from './src/routes/order.routes.js';
 import wishlistRoutes from './src/routes/wishlist.routes.js';
 import checkoutRoutes from './src/routes/checkout.routes.js';
 import webhookRoutes  from './src/routes/webhook.routes.js';
-import chatRoutes from './src/routes/chat.routes.js';
+
 
 const app  = express();
 const port = process.env.PORT || 5000;
@@ -36,7 +36,7 @@ app.use('/api/cart',     cartRoutes);
 app.use('/api/orders',   orderRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/checkout', checkoutRoutes);
-app.use('/api/chat', chatRoutes);
+
 app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'Ferrum API is running' });
 });
