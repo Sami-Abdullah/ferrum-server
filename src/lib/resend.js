@@ -1,14 +1,11 @@
-import { Resend } from 'resend';
-
-export const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendEmail } from './mailer.js';
 
 export async function sendOrderConfirmationEmail(order) {
   const itemsHtml = order.items
     .map((i) => `<li>${i.name} (${i.size}) × ${i.quantity} — $${(i.price * i.quantity).toFixed(2)}</li>`)
     .join('');
 
-  await resend.emails.send({
-    from: 'Ferrum <onboarding@resend.dev>',
+  await sendEmail({
     to: order.customerEmail,
     subject: `Order confirmed — #${order._id.toString().slice(-8).toUpperCase()}`,
     html: `
@@ -21,8 +18,7 @@ export async function sendOrderConfirmationEmail(order) {
 }
 
 export async function sendRefundConfirmationEmail(order) {
-  await resend.emails.send({
-    from: 'Ferrum <onboarding@resend.dev>',
+  await sendEmail({
     to: order.customerEmail,
     subject: `Refund issued — Order #${order._id.toString().slice(-8).toUpperCase()}`,
     html: `
